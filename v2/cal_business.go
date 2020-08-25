@@ -2,7 +2,9 @@
 
 package cal
 
-import "time"
+import (
+	"time"
+)
 
 // WorkdayFn reports whether the given date is a workday.
 // This is useful for situations where work days change throughout the year.
@@ -314,6 +316,20 @@ func (c *BusinessCalendar) NextWorkdayStart(date time.Time) time.Time {
 	return c.WorkdayStart(t)
 }
 
+// PreviousWorkdayEnd reports the end of the previous work day from the given date.
+func (c *BusinessCalendar) PreviousWorkdayEnd(date time.Time) time.Time {
+
+	t := date
+	if date.Before(c.WorkdayEnd(date)) {
+		t = t.Add(-24 * time.Hour)
+	}
+
+	for !c.IsWorkday(t) {
+		t = t.Add(-24 * time.Hour)
+	}
+	return c.WorkdayEnd(t)
+}
+
 // WorkHoursInRange reports the working hours between the given start and end
 // dates.
 func (c *BusinessCalendar) WorkHoursInRange(start, end time.Time) time.Duration {
@@ -421,4 +437,35 @@ func (c *BusinessCalendar) AddWorkHours(date time.Time, worked time.Duration) ti
 	}
 
 	return r
+}
+
+// DeductWorkHours determines the time in the past where the worked should have been started.
+//
+// If duration <= 0, then the original date is returned.
+func (c *BusinessCalendar) DeductWorkHours(date time.Time, duration time.Duration) time.Time {
+	if duration <= 0 {
+		return date
+	}
+
+	// If we are outside of worktime, move to PreviousWorkdayEnd
+	if !c.IsWorkday(date) || !c.IsWorkTime(date) || date == c.WorkdayStart(date) {
+		date = c.PreviousWorkdayEnd(date)
+	}
+	var remainingWorkHours time.Duration
+	for duration > 0 {
+		if date.Before(c.WorkdayStart(date)) {
+			remainingWorkHours = date.Sub(c.WorkdayStart(date)) + 24*time.Hour
+		} else {
+			remainingWorkHours = date.Sub(c.WorkdayStart(date))
+		}
+		if duration > remainingWorkHours {
+			duration = duration - remainingWorkHours
+			date = c.PreviousWorkdayEnd(date)
+		} else {
+			date = date.Add(-duration)
+			duration = 0
+		}
+	}
+
+	return date
 }
